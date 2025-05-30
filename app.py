@@ -4,6 +4,8 @@ from dataclasses import dataclass
 from enum import Enum
 import random
 from flask import Flask, request, jsonify
+import pandas as pd
+import os
 
 class Purpose(Enum):
     EMERGENCY = "emergency"
@@ -97,11 +99,241 @@ class SmartLiquidityEngine:
         # Sample asset metrics database (in real scenario, this would come from API/database)
         self.stock_metrics = {}
         self.mf_metrics = {}
+        self.stock_prices = {}  # Store stock prices
+        self.mf_navs = {}      # Store MF NAVs
         self.tax_slab_exhausted = {}  # Track tax slab usage by family member
         
     def initialize_sample_data(self):
-        """Initialize sample asset metrics for demonstration"""
-        # Sample stock metrics
+        """Initialize asset metrics from CSV files"""
+        try:
+            # Get the absolute path to the assets directory
+            current_dir = os.path.dirname(os.path.abspath(__file__))
+            stock_csv_path = os.path.join(current_dir, 'assets', 'Stock_Screener.csv')
+            mf_csv_path = os.path.join(current_dir, 'assets', 'Mutual_Fund_Screener.csv')
+            
+            # Initialize stock data
+            if os.path.exists(stock_csv_path):
+                # First, let's read the first few lines to debug
+                with open(stock_csv_path, 'r') as f:
+                    print("First few lines of Stock CSV:")
+                    for i, line in enumerate(f):
+                        if i < 5:  # Print first 5 lines
+                            print(f"Line {i+1}: {line.strip()}")
+                
+                # Read CSV with more robust settings
+                df = pd.read_csv(
+                    stock_csv_path,
+                    encoding='utf-8',
+                    on_bad_lines='warn',  # Warn about problematic lines
+                    quoting=1,  # QUOTE_ALL mode
+                    skipinitialspace=True,  # Skip spaces after delimiter
+                    dtype={
+                        'Ticker': str,
+                        'Name': str,
+                        'Sub-Sector': str,
+                        'Market Cap': str,
+                        'Close Price': float,
+                        'PE Ratio': float,
+                        'RSI – 14D': float,
+                        'Pledged Promoter Holdings': float,
+                        'Promoter Holding': float,
+                        'Beta': float,
+                        '6M Return vs Nifty': float,
+                        '5Y CAGR': float,
+                        'Debt to Equity': float,
+                        'ROCE': float,
+                        'Return on Equity': float,
+                        'Dividend Yield': float,
+                        'Free Cash Flow': float
+                    }
+                )
+                
+                print(f"\nStock CSV Shape: {df.shape}")
+                print("Stock Columns found:", df.columns.tolist())
+                
+                # Store stock prices
+                for _, row in df.iterrows():
+                    ticker = row['Ticker']
+                    if pd.notna(ticker) and pd.notna(row['Close Price']):
+                        self.stock_prices[ticker] = float(row['Close Price'])
+                
+                # Convert column names to match our StockMetrics class
+                column_mapping = {
+                    'PE Ratio': 'pe_ratio',
+                    'RSI – 14D': 'rsi_14d',
+                    'Pledged Promoter Holdings': 'pledged_promoter_holdings',
+                    'Promoter Holding': 'promoter_holding',
+                    'Beta': 'beta',
+                    '6M Return vs Nifty': 'six_month_return_vs_nifty',
+                    '5Y CAGR': 'five_year_cagr',
+                    'Debt to Equity': 'debt_to_equity',
+                    'ROCE': 'roce',
+                    'Return on Equity': 'return_on_equity',
+                    'Dividend Yield': 'dividend_yield',
+                    'Free Cash Flow': 'free_cash_flow'
+                }
+                
+                # Rename columns to match our class attributes
+                df = df.rename(columns=column_mapping)
+                
+                # Process each stock
+                for _, row in df.iterrows():
+                    try:
+                        ticker = row['Ticker']
+                        if pd.isna(ticker):
+                            continue
+                            
+                        self.stock_metrics[ticker] = StockMetrics(
+                            pe_ratio=float(row['pe_ratio']) if pd.notna(row['pe_ratio']) else 25.0,
+                            rsi_14d=float(row['rsi_14d']) if pd.notna(row['rsi_14d']) else 50.0,
+                            pledged_promoter_holdings=float(row['pledged_promoter_holdings']) if pd.notna(row['pledged_promoter_holdings']) else 0.0,
+                            promoter_holding=float(row['promoter_holding']) if pd.notna(row['promoter_holding']) else 50.0,
+                            beta=float(row['beta']) if pd.notna(row['beta']) else 1.0,
+                            six_month_return_vs_nifty=float(row['six_month_return_vs_nifty']) if pd.notna(row['six_month_return_vs_nifty']) else 0.0,
+                            five_year_cagr=float(row['five_year_cagr']) if pd.notna(row['five_year_cagr']) else 12.0,
+                            debt_to_equity=float(row['debt_to_equity']) if pd.notna(row['debt_to_equity']) else 0.5,
+                            roce=float(row['roce']) if pd.notna(row['roce']) else 15.0,
+                            return_on_equity=float(row['return_on_equity']) if pd.notna(row['return_on_equity']) else 15.0,
+                            dividend_yield=float(row['dividend_yield']) if pd.notna(row['dividend_yield']) else 2.0,
+                            free_cash_flow=float(row['free_cash_flow']) if pd.notna(row['free_cash_flow']) else 1000.0,
+                            months_held=random.randint(6, 36),  # This would need to come from portfolio data
+                            is_goal_linked=random.choice([True, False])  # This would need to come from portfolio data
+                        )
+                    except Exception as e:
+                        print(f"Error processing stock row for ticker {ticker}: {str(e)}")
+                        continue
+                        
+                print(f"Successfully loaded {len(self.stock_metrics)} stocks")
+            else:
+                print(f"Warning: Stock screener CSV not found at {stock_csv_path}")
+                # Fallback to sample data if CSV not found
+                self._initialize_sample_stock_data()
+
+            # Initialize MF data
+            if os.path.exists(mf_csv_path):
+                # First, let's read the first few lines to debug
+                with open(mf_csv_path, 'r') as f:
+                    print("\nFirst few lines of MF CSV:")
+                    for i, line in enumerate(f):
+                        if i < 5:  # Print first 5 lines
+                            print(f"Line {i+1}: {line.strip()}")
+                
+                # Read CSV with more robust settings
+                mf_df = pd.read_csv(
+                    mf_csv_path,
+                    encoding='utf-8',
+                    on_bad_lines='warn',
+                    quoting=1,
+                    skipinitialspace=True,
+                    dtype={
+                        'Name': str,
+                        'Sub Category': str,
+                        'Plan': str,
+                        'AUM': str,
+                        'CAGR 3Y': float,
+                        'Expense Ratio': float,
+                        'Volatility': float,
+                        'Sharpe Ratio': float,
+                        'Alpha': float,
+                        'Sortino Ratio': float,
+                        'Tracking Error': float,
+                        'Time since inception': str,
+                        'SEBI Risk Category': str,
+                        'NAV': float
+                    }
+                )
+                
+                print(f"\nMF CSV Shape: {mf_df.shape}")
+                print("MF Columns found:", mf_df.columns.tolist())
+                
+                # Store MF NAVs
+                for _, row in mf_df.iterrows():
+                    mf_name = row['Name']
+                    if pd.notna(mf_name) and pd.notna(row['NAV']):
+                        self.mf_navs[mf_name] = float(row['NAV'])
+                
+                # Convert column names to match our MFMetrics class
+                mf_column_mapping = {
+                    'CAGR 3Y': 'cagr_3y',
+                    'Expense Ratio': 'expense_ratio',
+                    'Volatility': 'volatility',
+                    'Sharpe Ratio': 'sharpe_ratio',
+                    'Alpha': 'alpha',
+                    'Sortino Ratio': 'sortino_ratio',
+                    'Tracking Error': 'tracking_error',
+                    'Time since inception': 'time_since_inception',
+                    'SEBI Risk Category': 'sebi_risk_category'
+                }
+                
+                # Rename columns to match our class attributes
+                mf_df = mf_df.rename(columns=mf_column_mapping)
+                
+                # Process each MF
+                for _, row in mf_df.iterrows():
+                    try:
+                        mf_name = row['Name']
+                        if pd.isna(mf_name):
+                            continue
+                            
+                        # Convert time since inception to months
+                        time_since_inception = row['time_since_inception']
+                        months = 0
+                        if isinstance(time_since_inception, str):
+                            if 'year' in time_since_inception.lower():
+                                years = float(time_since_inception.split()[0])
+                                months = int(years * 12)
+                            elif 'month' in time_since_inception.lower():
+                                months = int(time_since_inception.split()[0])
+                        
+                        # Map SEBI risk category
+                        sebi_risk = row['sebi_risk_category']
+                        sebi_risk_category = SEBIRiskCategory.MODERATE  # default
+                        if isinstance(sebi_risk, str):
+                            sebi_risk = sebi_risk.lower().strip()
+                            if 'very high' in sebi_risk:
+                                sebi_risk_category = SEBIRiskCategory.VERY_HIGH
+                            elif 'high' in sebi_risk:
+                                sebi_risk_category = SEBIRiskCategory.HIGH
+                            elif 'moderately high' in sebi_risk:
+                                sebi_risk_category = SEBIRiskCategory.MODERATELY_HIGH
+                            elif 'moderate' in sebi_risk:
+                                sebi_risk_category = SEBIRiskCategory.MODERATE
+                            elif 'moderately low' in sebi_risk:
+                                sebi_risk_category = SEBIRiskCategory.MODERATELY_LOW
+                            elif 'low' in sebi_risk:
+                                sebi_risk_category = SEBIRiskCategory.LOW
+                        
+                        self.mf_metrics[mf_name] = MFMetrics(
+                            cagr_3y=float(row['cagr_3y']) if pd.notna(row['cagr_3y']) else 12.0,
+                            expense_ratio=float(row['expense_ratio']) if pd.notna(row['expense_ratio']) else 1.5,
+                            volatility=float(row['volatility']) if pd.notna(row['volatility']) else 15.0,
+                            sharpe_ratio=float(row['sharpe_ratio']) if pd.notna(row['sharpe_ratio']) else 1.0,
+                            alpha=float(row['alpha']) if pd.notna(row['alpha']) else 0.0,
+                            sortino_ratio=float(row['sortino_ratio']) if pd.notna(row['sortino_ratio']) else 1.2,
+                            tracking_error=float(row['tracking_error']) if pd.notna(row['tracking_error']) else 3.0,
+                            time_since_inception=months,
+                            sebi_risk_category=sebi_risk_category,
+                            months_held=random.randint(6, 36),  # This would need to come from portfolio data
+                            is_goal_linked=random.choice([True, False])  # This would need to come from portfolio data
+                        )
+                    except Exception as e:
+                        print(f"Error processing MF row for {mf_name}: {str(e)}")
+                        continue
+                        
+                print(f"Successfully loaded {len(self.mf_metrics)} mutual funds")
+            else:
+                print(f"Warning: Mutual Fund screener CSV not found at {mf_csv_path}")
+                # Fallback to sample data if CSV not found
+                self._initialize_sample_mf_data()
+                
+        except Exception as e:
+            print(f"Error initializing data: {str(e)}")
+            # Fallback to sample data if there's an error
+            self._initialize_sample_stock_data()
+            self._initialize_sample_mf_data()
+
+    def _initialize_sample_stock_data(self):
+        """Fallback method to initialize sample stock data"""
         stock_samples = ["RELIANCE", "TCS", "HDFC", "INFY", "ITC", "WIPRO", "BAJFINANCE", "HCLTECH"]
         for stock in stock_samples:
             self.stock_metrics[stock] = StockMetrics(
@@ -120,8 +352,9 @@ class SmartLiquidityEngine:
                 months_held=random.randint(6, 36),
                 is_goal_linked=random.choice([True, False])
             )
-        
-        # Sample MF metrics
+    
+    def _initialize_sample_mf_data(self):
+        """Initialize sample mutual fund data"""
         mf_samples = ["HDFC_FLEXICAP", "AXIS_BLUECHIP", "SBI_SMALLCAP", "ICICI_BALANCED", "HDFC_DEBT"]
         for mf in mf_samples:
             self.mf_metrics[mf] = MFMetrics(
@@ -139,36 +372,51 @@ class SmartLiquidityEngine:
             )
 
     def calculate_total_aum(self, mf_map: Dict, stock_map: Dict, bank_balances: Dict) -> float:
-        """Calculate total Assets Under Management"""
-        # In real scenario, this would fetch actual values from portfolio
-        # For demo, assuming average values
+        """Calculate total Assets Under Management using actual prices"""
         total_aum = 0
+        
+        # Calculate stock AUM
         for member, stocks in stock_map.items():
-            total_aum += len(stocks) * 50000  # Assuming avg 50k per stock
+            for stock, quantity in stocks.items():
+                if stock in self.stock_prices:
+                    total_aum += quantity * self.stock_prices[stock]
+                else:
+                    print(f"Warning: Price not found for stock {stock}")
+        
+        # Calculate MF AUM
         for member, mfs in mf_map.items():
-            total_aum += len(mfs) * 100000  # Assuming avg 1L per MF
+            for mf_name, quantity in mfs.items():
+                if mf_name in self.mf_navs:
+                    total_aum += quantity * self.mf_navs[mf_name]
+                else:
+                    print(f"Warning: NAV not found for mutual fund {mf_name}")
+        
+        # Add bank balances
         for member, balance in bank_balances.items():
             total_aum += balance
+            
         return total_aum
 
     def get_target_bank_percentage(self, purpose: Purpose, timeline: Timeline) -> float:
-        """Determine target bank balance percentage of total AUM"""
+        """Determine target bank balance percentage of total AUM for optimization"""
         if purpose == Purpose.EMERGENCY:
             if timeline == Timeline.IMMEDIATE or timeline == Timeline.WITHIN_WEEK:
-                return 0.05  # Keep only 5% in bank
+                return 0.15  # Keep 15% in bank for immediate emergencies
             elif timeline == Timeline.ONE_TO_FOUR_WEEKS:
-                return 0.03  # Keep only 3% in bank (more aggressive)
+                return 0.12  # Keep 12% in bank for near-term emergencies
+            else:
+                return 0.10  # Keep 10% for non-urgent emergencies
         elif purpose == Purpose.PLANNED_PURCHASE:
             if timeline == Timeline.NO_URGENCY:
-                return 0.05  # Keep 5% in bank
-            else:  # Large or urgent
-                return 0.02  # Keep only 2% in bank
+                return 0.05  # Keep 5% in bank for planned purchases with no urgency
+            else:  # Urgent planned purchases
+                return 0.10  # Keep 10% in bank for urgent purchases
         elif purpose == Purpose.LOAN_REPAYMENT:
-            return 0.05  # Keep 5% in bank
+            return 0.12  # Keep 12% in bank for loan repayments
         else:  # Other
-            return 0.02  # Keep only 2% in bank
-        
-        return 0.05  # Default to 5%
+            return 0.08  # Keep 8% in bank for other purposes
+            
+        return 0.08  # Default to 8%
 
     def score_stock_for_sale(self, stock_id: str, purpose: Purpose, 
                            timeline: Timeline) -> float:
@@ -333,8 +581,8 @@ class SmartLiquidityEngine:
         Main function to optimize asset liquidation based on decision tree
         
         Inputs:
-        - mf_map: {family_member: [mf_ids]}
-        - stock_map: {family_member: [stock_ids]}
+        - mf_map: {family_member: {mf_name: quantity}}
+        - stock_map: {family_member: {stock_id: quantity}}
         - bank_balances: {family_member: float}
         - question_answers: dict with user responses
         
@@ -377,31 +625,44 @@ class SmartLiquidityEngine:
         liquidation_plan = {}
         remaining_amount = amount_needed
         
-        # Step 1: Calculate bank balance optimization
+        # Step 1: Bank balance optimization
         target_bank_percentage = self.get_target_bank_percentage(purpose, timeline)
-        target_bank_balance = total_aum * target_bank_percentage
         total_bank_balance = sum(bank_balances.values())
+        current_bank_percentage = (total_bank_balance / total_aum) * 100
+        target_bank_balance = total_aum * target_bank_percentage
         
-        # Calculate how much to liquidate from bank (sell until it's only target% of AUM)
-        bank_liquidation_amount = max(0, total_bank_balance - target_bank_balance)
-        bank_liquidation_amount = min(bank_liquidation_amount, remaining_amount)
+        # Only liquidate bank funds if current percentage exceeds target percentage
+        bank_liquidation_amount = 0
+        if current_bank_percentage > (target_bank_percentage * 100):
+            # Calculate excess bank balance that can be liquidated
+            excess_bank_balance = total_bank_balance - target_bank_balance
+            bank_liquidation_amount = min(excess_bank_balance, remaining_amount)
+        else:
+            # Bank balance is below or at target - don't liquidate any bank funds
+            bank_liquidation_amount = 0
         
         if bank_liquidation_amount > 0:
-            # Distribute bank liquidation proportionally
+            # Distribute bank liquidation proportionally across members
             for member, balance in bank_balances.items():
                 if balance > 0 and bank_liquidation_amount > 0:
-                    member_liquidation = min(balance, (balance/total_bank_balance) * bank_liquidation_amount)
-                    if member not in liquidation_plan:
-                        liquidation_plan[member] = []
-                    liquidation_plan[member].append({
-                        f"BANK_{member}": {
-                            'amount_to_liquidate': round(member_liquidation, 2),
-                            'reason': f'Optimizing bank balance to {target_bank_percentage*100:.0f}% of total AUM',
-                            'remaining_bank_balance': round(balance - member_liquidation, 2)
-                        }
-                    })
-                    remaining_amount -= member_liquidation
-                    bank_liquidation_amount -= member_liquidation
+                    # Calculate this member's proportion of total bank balance
+                    member_proportion = balance / total_bank_balance
+                    member_liquidation = member_proportion * bank_liquidation_amount
+                    
+                    # Ensure we don't liquidate more than the member's balance
+                    member_liquidation = min(member_liquidation, balance)
+                    
+                    if member_liquidation > 0:
+                        if member not in liquidation_plan:
+                            liquidation_plan[member] = []
+                        liquidation_plan[member].append({
+                            f"BANK_{member}": {
+                                'amount_to_liquidate': round(member_liquidation, 2),
+                                'reason': f'Bank balance ({current_bank_percentage:.1f}%) exceeds target ({target_bank_percentage*100:.1f}%)',
+                                'remaining_bank_balance': round(balance - member_liquidation, 2)
+                            }
+                        })
+                        remaining_amount -= member_liquidation
         
         # Step 2: If more money needed, sell assets
         if remaining_amount > 0:
@@ -414,15 +675,17 @@ class SmartLiquidityEngine:
                 if member in priority_members:
                     continue
                     
-                for stock in stocks:
+                for stock, quantity in stocks.items():
                     score = self.score_stock_for_sale(stock, purpose, timeline)
-                    all_assets.append({
-                        'member': member,
-                        'asset_id': stock,
-                        'type': 'stock',
-                        'score': score,
-                        'estimated_value': 50000  # Sample value
-                    })
+                    if stock in self.stock_prices:
+                        estimated_value = quantity * self.stock_prices[stock]
+                        all_assets.append({
+                            'member': member,
+                            'asset_id': stock,
+                            'type': 'stock',
+                            'score': score,
+                            'estimated_value': estimated_value
+                        })
             
             # Score all MFs
             for member, mfs in mf_map.items():
@@ -430,15 +693,17 @@ class SmartLiquidityEngine:
                 if member in priority_members:
                     continue
                     
-                for mf in mfs:
-                    score = self.score_mf_for_sale(mf, purpose, timeline)
-                    all_assets.append({
-                        'member': member,
-                        'asset_id': mf,
-                        'type': 'mf',
-                        'score': score,
-                        'estimated_value': 100000  # Sample value
-                    })
+                for mf_name, quantity in mfs.items():
+                    score = self.score_mf_for_sale(mf_name, purpose, timeline)
+                    if mf_name in self.mf_navs:
+                        estimated_value = quantity * self.mf_navs[mf_name]
+                        all_assets.append({
+                            'member': member,
+                            'asset_id': mf_name,
+                            'type': 'mf',
+                            'score': score,
+                            'estimated_value': estimated_value
+                        })
             
             # Sort by score (highest first - most suitable to sell)
             all_assets.sort(key=lambda x: x['score'], reverse=True)
@@ -490,8 +755,11 @@ class SmartLiquidityEngine:
             'liquidation_percentage': round(liquidation_percentage, 2),
             'bank_optimization': {
                 'current_bank_balance': round(total_bank_balance, 2),
+                'current_bank_percentage': round(current_bank_percentage, 2),
+                'target_bank_percentage': round(target_bank_percentage * 100, 2),
                 'target_bank_balance': round(target_bank_balance, 2),
-                'bank_liquidation_amount': round(total_bank_balance - target_bank_balance, 2) if total_bank_balance > target_bank_balance else 0
+                'bank_liquidation_amount': round(bank_liquidation_amount, 2),
+                'excess_bank_balance': round(max(0, total_bank_balance - target_bank_balance), 2)
             },
             'assets_liquidated': round(amount_needed - max(0, remaining_amount), 2),
             'shortfall': round(max(0, remaining_amount), 2)
@@ -627,9 +895,19 @@ def optimize_liquidation_api():
     Expected JSON input format:
     {
         "portfolio": {
-            "mutual_funds": {"member": ["mf_ids"]},
-            "stocks": {"member": ["stock_ids"]},
-            "bank_balances": {"member": amount}
+            "mutual_funds": {
+                "member": {
+                    "mf_name": quantity
+                }
+            },
+            "stocks": {
+                "member": {
+                    "stock_id": quantity
+                }
+            },
+            "bank_balances": {
+                "member": amount
+            }
         },
         "questionnaire": {
             "purpose": "emergency|planned_purchase|loan_repayment|other",
@@ -665,4 +943,12 @@ def optimize_liquidation_api():
         }), 500
 
 if __name__ == "__main__":
-    app.run(debug=True, port=5000, host='0.0.0.0')
+    # Get port from environment variable or use default
+    port = int(os.environ.get('PORT', 5001))
+    # Get host from environment variable or use default
+    host = os.environ.get('HOST', '0.0.0.0')
+    # Get debug mode from environment variable or use default
+    debug = os.environ.get('FLASK_DEBUG', 'True').lower() == 'true'
+    
+    print(f"Starting server on {host}:{port} (debug={debug})")
+    app.run(debug=debug, port=port, host=host)
