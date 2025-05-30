@@ -1,6 +1,6 @@
 import os
 from flask import Flask
-from .api.routes import api
+from src.api.routes import api
 
 def create_app():
     """Create and configure the Flask application"""
