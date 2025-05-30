@@ -13,7 +13,7 @@ def optimize_liquidation_api():
         "portfolio": {
             "mutual_funds": {
                 "member": {
-                    "mf_name": quantity
+                    "mf_name": net_worth  // Net worth of the MF in rupees
                 }
             },
             "stocks": {

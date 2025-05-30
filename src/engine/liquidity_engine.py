@@ -11,7 +11,6 @@ class SmartLiquidityEngine:
         self.stock_metrics = {}
         self.mf_metrics = {}
         self.stock_prices = {}
-        self.mf_navs = {}
         self.tax_slab_exhausted = {}
 
     def initialize_sample_data(self):
@@ -86,12 +85,6 @@ class SmartLiquidityEngine:
                 quoting=1,
                 skipinitialspace=True
             )
-            
-            # Store MF NAVs
-            for _, row in mf_df.iterrows():
-                mf_name = row['Name']
-                if pd.notna(mf_name) and pd.notna(row['NAV']):
-                    self.mf_navs[mf_name] = float(row['NAV'])
             
             # Process each MF
             for _, row in mf_df.iterrows():
@@ -199,13 +192,10 @@ class SmartLiquidityEngine:
                 else:
                     print(f"Warning: Price not found for stock {stock}")
         
-        # Calculate MF AUM
+        # Calculate MF AUM - now using direct net worth values
         for member, mfs in mf_map.items():
-            for mf_name, quantity in mfs.items():
-                if mf_name in self.mf_navs:
-                    total_aum += quantity * self.mf_navs[mf_name]
-                else:
-                    print(f"Warning: NAV not found for mutual fund {mf_name}")
+            for mf_name, net_worth in mfs.items():
+                total_aum += net_worth  # net_worth is now directly the value in rupees
         
         # Add bank balances
         for member, balance in bank_balances.items():
@@ -467,7 +457,7 @@ class SmartLiquidityEngine:
             
         if has_goals:
             recommendations.append("🎯 Review and rebalance remaining portfolio to stay on track with financial goals")
-            
+
         if income_change == "will_reduce":
             recommendations.append("📈 Consider creating additional passive income sources before income reduction")
             
@@ -595,16 +585,15 @@ class SmartLiquidityEngine:
                 if member in priority_members:
                     continue
                     
-                for mf_name, quantity in mfs.items():
+                for mf_name, net_worth in mfs.items():
                     score = self.score_mf_for_sale(mf_name, purpose, timeline)
-                    if mf_name in self.mf_navs:
-                        estimated_value = quantity * self.mf_navs[mf_name]
+                    if mf_name in self.mf_metrics:
                         all_assets.append({
                             'member': member,
                             'asset_id': mf_name,
                             'type': 'mf',
                             'score': score,
-                            'estimated_value': estimated_value
+                            'estimated_value': net_worth
                         })
             
             # Sort by score (highest first - most suitable to sell)
