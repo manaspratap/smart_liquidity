@@ -11,6 +11,9 @@ def create_app():
     
     return app
 
+# Create the app instance at module level for Gunicorn
+app = create_app()
+
 if __name__ == "__main__":
     # Get port from environment variable or use default
     port = int(os.environ.get('PORT', 5001))
@@ -20,5 +23,4 @@ if __name__ == "__main__":
     debug = os.environ.get('FLASK_DEBUG', 'True').lower() == 'true'
     
     print(f"Starting server on {host}:{port} (debug={debug})")
-    app = create_app()
     app.run(debug=debug, port=port, host=host) 

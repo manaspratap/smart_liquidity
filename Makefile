@@ -3,11 +3,11 @@
 # Setup virtual environment and install dependencies
 setup:
 	python3 -m venv venv
-	. venv/bin/activate && pip install -r requirements.txt
+	. venv/bin/activate && pip3 install -r requirements.txt
 
 # Run the Flask application
 run:
-	PYTHONPATH=$PYTHONPATH:. python src/app.py
+	PYTHONPATH=$PYTHONPATH:. python3 app.py
 
 # Clean up virtual environment
 clean:
