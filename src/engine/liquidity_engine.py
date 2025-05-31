@@ -177,7 +177,7 @@ class SmartLiquidityEngine:
         return total_aum
 
     def get_target_bank_percentage(self, purpose: Purpose, timeline: Timeline) -> float:
-        """Determine target bank balance percentage of total AUM for optimization"""
+        """Determine target bank balance percentage of total AUM for optimization (returns decimal)"""
         if purpose == Purpose.EMERGENCY:
             if timeline == Timeline.IMMEDIATE or timeline == Timeline.WITHIN_WEEK:
                 return 0.15  # Keep 15% in bank for immediate emergencies
@@ -405,9 +405,9 @@ class SmartLiquidityEngine:
         """Generate additional recommendations"""
         recommendations = []
         
-        if liquidation_percentage > 50:
+        if liquidation_percentage > 0.5:  # 50%
             recommendations.append("⚠️ High liquidation percentage - consider exploring loan options to preserve investments")
-        elif liquidation_percentage > 30:
+        elif liquidation_percentage > 0.3:  # 30%
             recommendations.append("⚠️ Moderate liquidation - review if this amount is truly necessary")
         
         if purpose == Purpose.EMERGENCY:
@@ -466,11 +466,11 @@ class SmartLiquidityEngine:
         total_aum = self.calculate_total_aum(mf_map, stock_map, bank_balances)
         
         # CHECK 1: If liquidation amount is > 80% of net worth, reject
-        liquidation_percentage = (amount_needed / total_aum) * 100
-        if liquidation_percentage > 80:
+        liquidation_percentage = amount_needed / total_aum  # Keep as decimal
+        if liquidation_percentage > 0.8:  # 80%
             return {
                 'status': 'REJECTED',
-                'message': f'Cannot process liquidation request. You are asking to liquidate {liquidation_percentage:.1f}% of your total net worth (₹{amount_needed:,.0f} out of ₹{total_aum:,.0f}). This would severely impact your financial stability.',
+                'message': f'Cannot process liquidation request. You are asking to liquidate {liquidation_percentage*100:.1f}% of your total net worth (₹{amount_needed:,.0f} out of ₹{total_aum:,.0f}). This would severely impact your financial stability.',
                 'recommendation': 'Consider alternative funding sources like loans, or reduce the required amount.',
                 'max_safe_liquidation': f'₹{total_aum * 0.8:,.0f} (80% of net worth)'
             }
@@ -487,12 +487,12 @@ class SmartLiquidityEngine:
         # Step 1: Bank balance optimization
         target_bank_percentage = self.get_target_bank_percentage(purpose, timeline)
         total_bank_balance = sum(bank_balances.values())
-        current_bank_percentage = (total_bank_balance / total_aum) * 100
+        current_bank_percentage = total_bank_balance / total_aum  # Keep as decimal
         target_bank_balance = total_aum * target_bank_percentage
         
         # Only liquidate bank funds if current percentage exceeds target percentage
         bank_liquidation_amount = 0
-        if current_bank_percentage > (target_bank_percentage * 100):
+        if current_bank_percentage > target_bank_percentage:
             # Calculate excess bank balance that can be liquidated
             excess_bank_balance = total_bank_balance - target_bank_balance
             bank_liquidation_amount = min(excess_bank_balance, remaining_amount)
@@ -514,11 +514,13 @@ class SmartLiquidityEngine:
                     if member_liquidation > 0:
                         if member not in response["primary_liquidation"]:
                             response["primary_liquidation"][member] = {}
-                        response["primary_liquidation"][member]["Bank"] = {
+                        if "Bank" not in response["primary_liquidation"][member]:
+                            response["primary_liquidation"][member]["Bank"] = []
+                        response["primary_liquidation"][member]["Bank"].append({
                             "id": "Bank",
                             "value_to_sell": round(member_liquidation, 2),
-                            "reason": f'Bank balance ({current_bank_percentage:.1f}%) exceeds target ({target_bank_percentage*100:.1f}%)'
-                        }
+                            "reason": f'Bank balance ({current_bank_percentage*100:.1f}%) exceeds target ({target_bank_percentage*100:.1f}%)'
+                        })
                         remaining_amount -= member_liquidation
         
         # Step 2: If more money needed, sell assets
@@ -573,10 +575,10 @@ class SmartLiquidityEngine:
                 
                 # Calculate percentage to sell
                 if remaining_amount >= estimated_value:
-                    percentage_to_sell = 100.0
+                    percentage_to_sell = 1.0  # 100%
                     amount_from_asset = estimated_value
                 else:
-                    percentage_to_sell = (remaining_amount / estimated_value) * 100
+                    percentage_to_sell = remaining_amount / estimated_value  # Keep as decimal
                     amount_from_asset = remaining_amount
                 
                 # Add to response
@@ -585,18 +587,13 @@ class SmartLiquidityEngine:
                 
                 asset_type = "Stock" if asset['type'] == 'stock' else "MF"
                 if asset_type not in response["primary_liquidation"][member]:
-                    response["primary_liquidation"][member][asset_type] = {
-                        "name": asset_id,
-                        "value_to_sell": 0,
-                        "reason": ""
-                    }
+                    response["primary_liquidation"][member][asset_type] = []
                 
-                response["primary_liquidation"][member][asset_type]["value_to_sell"] += round(amount_from_asset, 2)
-                if asset['type'] == 'stock':
-                    reason = self._get_stock_sell_reason(asset_id, asset['score'])
-                else:
-                    reason = self._get_mf_sell_reason(asset_id, asset['score'])
-                response["primary_liquidation"][member][asset_type]["reason"] = reason
+                response["primary_liquidation"][member][asset_type].append({
+                    "name": asset_id,
+                    "value_to_sell": round(amount_from_asset, 2),
+                    "reason": self._get_stock_sell_reason(asset_id, asset['score']) if asset['type'] == 'stock' else self._get_mf_sell_reason(asset_id, asset['score'])
+                })
                 
                 remaining_amount -= amount_from_asset
         
