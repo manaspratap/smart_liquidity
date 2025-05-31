@@ -304,7 +304,7 @@ class SmartLiquidityEngine:
         # Check stocks for poor performance
         for member, stocks in stock_map.items():
             poor_assets[member] = []
-            for stock_name in stocks:
+            for stock_name, net_worth in stocks.items():
                 if stock_name in self.stock_metrics:
                     metrics = self.stock_metrics[stock_name]
                     score = self.score_stock_for_sale(stock_name, Purpose.OTHER, Timeline.NO_URGENCY)
@@ -314,31 +314,31 @@ class SmartLiquidityEngine:
                         poor_assets[member].append({
                             'asset_id': stock_name,
                             'type': 'stock',
-                            'estimated_value': 50000,  # Sample value
+                            'estimated_value': net_worth,  # Use actual net worth
                             'issues': self._get_stock_sell_reason(stock_name, score),
                             'recommendation': 'Consider switching to fundamentally stronger stocks'
                         })
-                        total_poor_value += 50000
+                        total_poor_value += net_worth
         
         # Check MFs for poor performance
         for member, mfs in mf_map.items():
             if member not in poor_assets:
                 poor_assets[member] = []
-            for mf in mfs:
-                if mf in self.mf_metrics:
-                    metrics = self.mf_metrics[mf]
-                    score = self.score_mf_for_sale(mf, Purpose.OTHER, Timeline.NO_URGENCY)
+            for mf_name, net_worth in mfs.items():
+                if mf_name in self.mf_metrics:
+                    metrics = self.mf_metrics[mf_name]
+                    score = self.score_mf_for_sale(mf_name, Purpose.OTHER, Timeline.NO_URGENCY)
                     
                     # Consider it poor if score is high
                     if score > 30:
                         poor_assets[member].append({
-                            'asset_id': mf,
+                            'asset_id': mf_name,
                             'type': 'mf',
-                            'estimated_value': 100000,  # Sample value
-                            'issues': self._get_mf_sell_reason(mf, score),
+                            'estimated_value': net_worth,
+                            'issues': self._get_mf_sell_reason(mf_name, score),
                             'recommendation': 'Consider switching to better performing funds with lower costs'
                         })
-                        total_poor_value += 100000
+                        total_poor_value += net_worth
         
         return poor_assets, total_poor_value
 
@@ -511,6 +511,7 @@ class SmartLiquidityEngine:
                     # Ensure we don't liquidate more than the member's balance
                     member_liquidation = min(member_liquidation, balance)
                     
+                    # Only add if there's a positive value to liquidate
                     if member_liquidation > 0:
                         if member not in response["primary_liquidation"]:
                             response["primary_liquidation"][member] = {}
@@ -589,11 +590,12 @@ class SmartLiquidityEngine:
                 if asset_type not in response["primary_liquidation"][member]:
                     response["primary_liquidation"][member][asset_type] = []
                 
-                response["primary_liquidation"][member][asset_type].append({
-                    "name": asset_id,
-                    "value_to_sell": round(amount_from_asset, 2),
-                    "reason": self._get_stock_sell_reason(asset_id, asset['score']) if asset['type'] == 'stock' else self._get_mf_sell_reason(asset_id, asset['score'])
-                })
+                if round(amount_from_asset, 2) > 0:
+                    response["primary_liquidation"][member][asset_type].append({
+                        "name": asset_id,
+                        "value_to_sell": round(amount_from_asset, 2),
+                        "reason": self._get_stock_sell_reason(asset_id, asset['score']) if asset['type'] == 'stock' else self._get_mf_sell_reason(asset_id, asset['score'])
+                    })
                 
                 remaining_amount -= amount_from_asset
         
