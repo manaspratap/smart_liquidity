@@ -514,7 +514,12 @@ class SmartLiquidityEngine:
                 'max_safe_liquidation': f'₹{total_aum * 0.8:,.0f} (80% of net worth)'
             }
         
-        liquidation_plan = {}
+        # Initialize response structure
+        response = {
+            "primary_liquidation": {},
+            "secondary_liquidation": {}
+        }
+        
         remaining_amount = amount_needed
         
         # Step 1: Bank balance optimization
@@ -545,15 +550,13 @@ class SmartLiquidityEngine:
                     member_liquidation = min(member_liquidation, balance)
                     
                     if member_liquidation > 0:
-                        if member not in liquidation_plan:
-                            liquidation_plan[member] = []
-                        liquidation_plan[member].append({
-                            f"BANK_{member}": {
-                                'amount_to_liquidate': round(member_liquidation, 2),
-                                'reason': f'Bank balance ({current_bank_percentage:.1f}%) exceeds target ({target_bank_percentage*100:.1f}%)',
-                                'remaining_bank_balance': round(balance - member_liquidation, 2)
-                            }
-                        })
+                        if member not in response["primary_liquidation"]:
+                            response["primary_liquidation"][member] = {}
+                        response["primary_liquidation"][member]["Bank"] = {
+                            "id": "Bank",
+                            "value_to_sell": round(member_liquidation, 2),
+                            "reason": f'Bank balance ({current_bank_percentage:.1f}%) exceeds target ({target_bank_percentage*100:.1f}%)'
+                        }
                         remaining_amount -= member_liquidation
         
         # Step 2: If more money needed, sell assets
@@ -616,57 +619,43 @@ class SmartLiquidityEngine:
                     percentage_to_sell = (remaining_amount / estimated_value) * 100
                     amount_from_asset = remaining_amount
                 
-                # Add to liquidation plan
-                if member not in liquidation_plan:
-                    liquidation_plan[member] = []
+                # Add to response
+                if member not in response["primary_liquidation"]:
+                    response["primary_liquidation"][member] = {}
                 
+                asset_type = "Stock" if asset['type'] == 'stock' else "MF"
+                if asset_type not in response["primary_liquidation"][member]:
+                    response["primary_liquidation"][member][asset_type] = {
+                        "id": asset_type,
+                        "value_to_sell": 0,
+                        "reason": ""
+                    }
+                
+                response["primary_liquidation"][member][asset_type]["value_to_sell"] += round(amount_from_asset, 2)
                 if asset['type'] == 'stock':
                     reason = self._get_stock_sell_reason(asset_id, asset['score'])
                 else:
                     reason = self._get_mf_sell_reason(asset_id, asset['score'])
-                
-                liquidation_plan[member].append({
-                    asset_id: {
-                        'percentage_to_sell': round(percentage_to_sell, 2),
-                        'estimated_amount': round(amount_from_asset, 2),
-                        'reason': reason
-                    }
-                })
+                response["primary_liquidation"][member][asset_type]["reason"] = reason
                 
                 remaining_amount -= amount_from_asset
         
         # Step 3: Identify additional poor performers for reinvestment suggestions
         poor_assets, total_poor_value = self.identify_poor_performers(mf_map, stock_map)
         
-        # Add summary and recommendations
-        liquidation_plan['status'] = 'SUCCESS'
-        liquidation_plan['primary_liquidation'] = {
-            'total_amount_needed': amount_needed,
-            'total_aum': round(total_aum, 2),
-            'liquidation_percentage': round(liquidation_percentage, 2),
-            'bank_optimization': {
-                'current_bank_balance': round(total_bank_balance, 2),
-                'current_bank_percentage': round(current_bank_percentage, 2),
-                'target_bank_percentage': round(target_bank_percentage * 100, 2),
-                'target_bank_balance': round(target_bank_balance, 2),
-                'bank_liquidation_amount': round(bank_liquidation_amount, 2),
-                'excess_bank_balance': round(max(0, total_bank_balance - target_bank_balance), 2)
-            },
-            'assets_liquidated': round(amount_needed - max(0, remaining_amount), 2),
-            'shortfall': round(max(0, remaining_amount), 2)
-        }
+        # Add secondary liquidation (poor performers)
+        for member, assets in poor_assets.items():
+            if assets:  # Only add if there are assets to liquidate
+                response["secondary_liquidation"][member] = []
+                for asset in assets:
+                    asset_type = "Stock" if asset["type"] == "stock" else "MF"
+                    response["secondary_liquidation"][member].append({
+                        "id": asset_type,
+                        "value_to_sell": asset["estimated_value"],
+                        "reason": asset["issues"]
+                    })
         
-        # Business opportunity - suggest additional poor performers to optimize
-        liquidation_plan['additional_optimization_opportunity'] = {
-            'message': f'Beyond your immediate need of ₹{amount_needed:,.0f}, we identified ₹{total_poor_value:,.0f} worth of underperforming assets that you should consider optimizing.',
-            'total_poor_assets_value': round(total_poor_value, 2),
-            'poor_assets_by_member': poor_assets,
-            'business_pitch': 'Let us help you reinvest these underperforming assets into better opportunities for higher returns!'
-        }
-        
-        liquidation_plan['recommendations'] = self._generate_recommendations(purpose, timeline, has_goals, income_change, liquidation_percentage)
-        
-        return liquidation_plan
+        return response
 
     def process_user_input(self, combined_json: Dict) -> Dict:
         """
