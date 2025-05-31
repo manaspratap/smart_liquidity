@@ -10,11 +10,10 @@ class SmartLiquidityEngine:
     def __init__(self):
         self.stock_metrics = {}
         self.mf_metrics = {}
-        self.stock_prices = {}
         self.tax_slab_exhausted = {}
 
-    def initialize_sample_data(self):
-        """Initialize asset metrics from CSV files"""
+    def load_asset_data(self):
+        """Load asset metrics from CSV files with fallback to sample data"""
         try:
             current_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
             stock_csv_path = os.path.join(current_dir, 'assets', 'Stock_Screener.csv')
@@ -24,7 +23,7 @@ class SmartLiquidityEngine:
             self._load_mf_data(mf_csv_path)
                 
         except Exception as e:
-            print(f"Error initializing data: {str(e)}")
+            print(f"Error loading data: {str(e)}")
             self._initialize_sample_stock_data()
             self._initialize_sample_mf_data()
 
@@ -39,20 +38,14 @@ class SmartLiquidityEngine:
                 skipinitialspace=True
             )
             
-            # Store stock prices
-            for _, row in df.iterrows():
-                ticker = row['Ticker']
-                if pd.notna(ticker) and pd.notna(row['Close Price']):
-                    self.stock_prices[ticker] = float(row['Close Price'])
-            
             # Process each stock
             for _, row in df.iterrows():
                 try:
-                    ticker = row['Ticker']
-                    if pd.isna(ticker):
+                    stock_name = row['Name']
+                    if pd.isna(stock_name):
                         continue
                         
-                    self.stock_metrics[ticker] = StockMetrics(
+                    self.stock_metrics[stock_name] = StockMetrics(
                         pe_ratio=float(row['PE Ratio']) if pd.notna(row['PE Ratio']) else 25.0,
                         rsi_14d=float(row['RSI – 14D']) if pd.notna(row['RSI – 14D']) else 50.0,
                         pledged_promoter_holdings=float(row['Pledged Promoter Holdings']) if pd.notna(row['Pledged Promoter Holdings']) else 0.0,
@@ -64,12 +57,10 @@ class SmartLiquidityEngine:
                         roce=float(row['ROCE']) if pd.notna(row['ROCE']) else 15.0,
                         return_on_equity=float(row['Return on Equity']) if pd.notna(row['Return on Equity']) else 15.0,
                         dividend_yield=float(row['Dividend Yield']) if pd.notna(row['Dividend Yield']) else 2.0,
-                        free_cash_flow=float(row['Free Cash Flow']) if pd.notna(row['Free Cash Flow']) else 1000.0,
-                        months_held=random.randint(6, 36),
-                        is_goal_linked=random.choice([True, False])
+                        free_cash_flow=float(row['Free Cash Flow']) if pd.notna(row['Free Cash Flow']) else 1000.0
                     )
                 except Exception as e:
-                    print(f"Error processing stock row for ticker {ticker}: {str(e)}")
+                    print(f"Error processing stock row for {stock_name}: {str(e)}")
                     continue
         else:
             print(f"Warning: Stock screener CSV not found at {stock_csv_path}")
@@ -92,16 +83,6 @@ class SmartLiquidityEngine:
                     mf_name = row['Name']
                     if pd.isna(mf_name):
                         continue
-                        
-                    # Convert time since inception to months
-                    time_since_inception = row['Time since inception']
-                    months = 0
-                    if isinstance(time_since_inception, str):
-                        if 'year' in time_since_inception.lower():
-                            years = float(time_since_inception.split()[0])
-                            months = int(years * 12)
-                        elif 'month' in time_since_inception.lower():
-                            months = int(time_since_inception.split()[0])
                     
                     # Map SEBI risk category
                     sebi_risk = row['SEBI Risk Category']
@@ -129,10 +110,8 @@ class SmartLiquidityEngine:
                         alpha=float(row['Alpha']) if pd.notna(row['Alpha']) else 0.0,
                         sortino_ratio=float(row['Sortino Ratio']) if pd.notna(row['Sortino Ratio']) else 1.2,
                         tracking_error=float(row['Tracking Error']) if pd.notna(row['Tracking Error']) else 3.0,
-                        time_since_inception=months,
-                        sebi_risk_category=sebi_risk_category,
-                        months_held=random.randint(6, 36),
-                        is_goal_linked=random.choice([True, False])
+                        time_since_inception=float(row['Time since inception']) if pd.notna(row['Time since inception']) else 24.0,
+                        sebi_risk_category=sebi_risk_category
                     )
                 except Exception as e:
                     print(f"Error processing MF row for {mf_name}: {str(e)}")
@@ -143,7 +122,8 @@ class SmartLiquidityEngine:
 
     def _initialize_sample_stock_data(self):
         """Fallback method to initialize sample stock data"""
-        stock_samples = ["RELIANCE", "TCS", "HDFC", "INFY", "ITC", "WIPRO", "BAJFINANCE", "HCLTECH"]
+        stock_samples = ["Reliance Industries Ltd", "Tata Consultancy Services Ltd", "HDFC Bank Ltd", 
+                        "Infosys Ltd", "ITC Ltd", "Wipro Ltd", "Bajaj Finance Ltd", "HCL Technologies Ltd"]
         for stock in stock_samples:
             self.stock_metrics[stock] = StockMetrics(
                 pe_ratio=random.uniform(10, 50),
@@ -157,11 +137,9 @@ class SmartLiquidityEngine:
                 roce=random.uniform(5, 30),
                 return_on_equity=random.uniform(5, 35),
                 dividend_yield=random.uniform(0, 8),
-                free_cash_flow=random.uniform(-500, 5000),
-                months_held=random.randint(6, 36),
-                is_goal_linked=random.choice([True, False])
+                free_cash_flow=random.uniform(-500, 5000)
             )
-    
+
     def _initialize_sample_mf_data(self):
         """Initialize sample mutual fund data"""
         mf_samples = ["HDFC_FLEXICAP", "AXIS_BLUECHIP", "SBI_SMALLCAP", "ICICI_BALANCED", "HDFC_DEBT"]
@@ -175,27 +153,22 @@ class SmartLiquidityEngine:
                 sortino_ratio=random.uniform(0.5, 2.5),
                 tracking_error=random.uniform(1, 8),
                 time_since_inception=random.randint(12, 180),
-                sebi_risk_category=random.choice(list(SEBIRiskCategory)),
-                months_held=random.randint(6, 36),
-                is_goal_linked=random.choice([True, False])
+                sebi_risk_category=random.choice(list(SEBIRiskCategory))
             )
 
     def calculate_total_aum(self, mf_map: Dict, stock_map: Dict, bank_balances: Dict) -> float:
-        """Calculate total Assets Under Management using actual prices"""
+        """Calculate total Assets Under Management using actual net worth values"""
         total_aum = 0
         
-        # Calculate stock AUM
+        # Calculate stock AUM using direct net worth values
         for member, stocks in stock_map.items():
-            for stock, quantity in stocks.items():
-                if stock in self.stock_prices:
-                    total_aum += quantity * self.stock_prices[stock]
-                else:
-                    print(f"Warning: Price not found for stock {stock}")
+            for stock_name, net_worth in stocks.items():
+                total_aum += net_worth  # net_worth is directly the value in rupees
         
-        # Calculate MF AUM - now using direct net worth values
+        # Calculate MF AUM using direct net worth values
         for member, mfs in mf_map.items():
             for mf_name, net_worth in mfs.items():
-                total_aum += net_worth  # net_worth is now directly the value in rupees
+                total_aum += net_worth  # net_worth is directly the value in rupees
         
         # Add bank balances
         for member, balance in bank_balances.items():
@@ -224,13 +197,13 @@ class SmartLiquidityEngine:
             
         return 0.08  # Default to 8%
 
-    def score_stock_for_sale(self, stock_id: str, purpose: Purpose, 
+    def score_stock_for_sale(self, stock_name: str, purpose: Purpose, 
                            timeline: Timeline) -> float:
         """Score a stock for sale priority (higher score = sell first)"""
-        if stock_id not in self.stock_metrics:
+        if stock_name not in self.stock_metrics:
             return 0.0
             
-        metrics = self.stock_metrics[stock_id]
+        metrics = self.stock_metrics[stock_name]
         score = 0.0
         
         # High priority sell indicators based on new parameters
@@ -267,17 +240,9 @@ class SmartLiquidityEngine:
             if metrics.five_year_cagr < 12:  # Sell low long-term performers
                 score += 20
         
-        # Goal-linked assets should be avoided
-        if metrics.is_goal_linked:
-            score -= 50
-            
         # High dividend yield assets (for income generation)
         if metrics.dividend_yield > 4:
             score -= 15
-            
-        # Near LTCG assets (11-12 months) for tax efficiency
-        if 11 <= metrics.months_held <= 12:
-            score += 10
             
         return max(0, score)
 
@@ -329,10 +294,6 @@ class SmartLiquidityEngine:
             if metrics.cagr_3y < 12:  # Sell underperformers
                 score += 15
         
-        # Goal-linked funds should be avoided
-        if metrics.is_goal_linked:
-            score -= 50
-            
         return max(0, score)
 
     def identify_poor_performers(self, mf_map: Dict, stock_map: Dict) -> Tuple[Dict, float]:
@@ -343,18 +304,18 @@ class SmartLiquidityEngine:
         # Check stocks for poor performance
         for member, stocks in stock_map.items():
             poor_assets[member] = []
-            for stock in stocks:
-                if stock in self.stock_metrics:
-                    metrics = self.stock_metrics[stock]
-                    score = self.score_stock_for_sale(stock, Purpose.OTHER, Timeline.NO_URGENCY)
+            for stock_name in stocks:
+                if stock_name in self.stock_metrics:
+                    metrics = self.stock_metrics[stock_name]
+                    score = self.score_stock_for_sale(stock_name, Purpose.OTHER, Timeline.NO_URGENCY)
                     
-                    # Consider it poor if score is high (but not goal-linked)
-                    if score > 35 and not metrics.is_goal_linked:
+                    # Consider it poor if score is high
+                    if score > 35:
                         poor_assets[member].append({
-                            'asset_id': stock,
+                            'asset_id': stock_name,
                             'type': 'stock',
                             'estimated_value': 50000,  # Sample value
-                            'issues': self._get_stock_sell_reason(stock, score),
+                            'issues': self._get_stock_sell_reason(stock_name, score),
                             'recommendation': 'Consider switching to fundamentally stronger stocks'
                         })
                         total_poor_value += 50000
@@ -368,8 +329,8 @@ class SmartLiquidityEngine:
                     metrics = self.mf_metrics[mf]
                     score = self.score_mf_for_sale(mf, Purpose.OTHER, Timeline.NO_URGENCY)
                     
-                    # Consider it poor if score is high (but not goal-linked)
-                    if score > 30 and not metrics.is_goal_linked:
+                    # Consider it poor if score is high
+                    if score > 30:
                         poor_assets[member].append({
                             'asset_id': mf,
                             'type': 'mf',
@@ -381,12 +342,12 @@ class SmartLiquidityEngine:
         
         return poor_assets, total_poor_value
 
-    def _get_stock_sell_reason(self, stock_id: str, score: float) -> str:
+    def _get_stock_sell_reason(self, stock_name: str, score: float) -> str:
         """Generate reason for selling a stock"""
-        if stock_id not in self.stock_metrics:
+        if stock_name not in self.stock_metrics:
             return "Stock metrics not available"
             
-        metrics = self.stock_metrics[stock_id]
+        metrics = self.stock_metrics[stock_name]
         reasons = []
         
         if metrics.pe_ratio > 40:
@@ -473,8 +434,8 @@ class SmartLiquidityEngine:
         Main function to optimize asset liquidation based on decision tree
         
         Inputs:
-        - mf_map: {family_member: {mf_name: quantity}}
-        - stock_map: {family_member: {stock_id: quantity}}
+        - mf_map: {family_member: {mf_name: net_worth}}
+        - stock_map: {family_member: {stock_name: net_worth}}
         - bank_balances: {family_member: float}
         - question_answers: dict with user responses
         
@@ -483,7 +444,7 @@ class SmartLiquidityEngine:
         """
         
         # Initialize sample data for demonstration
-        self.initialize_sample_data()
+        self.load_asset_data()
         
         # Parse user inputs
         purpose = Purpose(question_answers.get('purpose', 'other'))
@@ -517,7 +478,8 @@ class SmartLiquidityEngine:
         # Initialize response structure
         response = {
             "primary_liquidation": {},
-            "secondary_liquidation": {}
+            "secondary_liquidation": {},
+            "recommendations": []
         }
         
         remaining_amount = amount_needed
@@ -570,17 +532,15 @@ class SmartLiquidityEngine:
                 if member in priority_members:
                     continue
                     
-                for stock, quantity in stocks.items():
-                    score = self.score_stock_for_sale(stock, purpose, timeline)
-                    if stock in self.stock_prices:
-                        estimated_value = quantity * self.stock_prices[stock]
-                        all_assets.append({
-                            'member': member,
-                            'asset_id': stock,
-                            'type': 'stock',
-                            'score': score,
-                            'estimated_value': estimated_value
-                        })
+                for stock_name, net_worth in stocks.items():
+                    score = self.score_stock_for_sale(stock_name, purpose, timeline)
+                    all_assets.append({
+                        'member': member,
+                        'asset_id': stock_name,
+                        'type': 'stock',
+                        'score': score,
+                        'estimated_value': net_worth
+                    })
             
             # Score all MFs
             for member, mfs in mf_map.items():
@@ -654,6 +614,15 @@ class SmartLiquidityEngine:
                         "value_to_sell": asset["estimated_value"],
                         "reason": asset["issues"]
                     })
+        
+        # Add recommendations
+        response["recommendations"] = self._generate_recommendations(
+            purpose=purpose,
+            timeline=timeline,
+            has_goals=has_goals,
+            income_change=income_change,
+            liquidation_percentage=liquidation_percentage
+        )
         
         return response
 
