@@ -518,7 +518,7 @@ class SmartLiquidityEngine:
                         if "Bank" not in response["primary_liquidation"][member]:
                             response["primary_liquidation"][member]["Bank"] = []
                         response["primary_liquidation"][member]["Bank"].append({
-                            "id": "Bank",
+                            "name": "Bank",
                             "value_to_sell": round(member_liquidation, 2),
                             "reason": f'Bank balance ({current_bank_percentage*100:.1f}%) exceeds target ({target_bank_percentage*100:.1f}%)'
                         })
