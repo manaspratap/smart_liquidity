@@ -605,10 +605,15 @@ class SmartLiquidityEngine:
         # Add secondary liquidation (poor performers)
         for member, assets in poor_assets.items():
             if assets:  # Only add if there are assets to liquidate
-                response["secondary_liquidation"][member] = []
+                if member not in response["secondary_liquidation"]:
+                    response["secondary_liquidation"][member] = {}
+                
                 for asset in assets:
                     asset_type = "Stock" if asset["type"] == "stock" else "MF"
-                    response["secondary_liquidation"][member].append({
+                    if asset_type not in response["secondary_liquidation"][member]:
+                        response["secondary_liquidation"][member][asset_type] = []
+                    
+                    response["secondary_liquidation"][member][asset_type].append({
                         "name": asset["asset_id"],
                         "value_to_sell": asset["estimated_value"],
                         "reason": asset["issues"]
