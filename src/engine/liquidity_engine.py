@@ -586,7 +586,7 @@ class SmartLiquidityEngine:
                 asset_type = "Stock" if asset['type'] == 'stock' else "MF"
                 if asset_type not in response["primary_liquidation"][member]:
                     response["primary_liquidation"][member][asset_type] = {
-                        "id": asset_type,
+                        "name": asset_id,
                         "value_to_sell": 0,
                         "reason": ""
                     }
@@ -610,7 +610,7 @@ class SmartLiquidityEngine:
                 for asset in assets:
                     asset_type = "Stock" if asset["type"] == "stock" else "MF"
                     response["secondary_liquidation"][member].append({
-                        "id": asset_type,
+                        "name": asset["asset_id"],
                         "value_to_sell": asset["estimated_value"],
                         "reason": asset["issues"]
                     })
